@@ -8,7 +8,6 @@ import qualified Data.ByteString as B
 import Data.Conduit
 import Data.List
 import qualified Data.Conduit.List as DCL
-import Control.DeepSeq
 
 treehash :: Monad m => ConduitM B.ByteString Void m (Digest SHA256)
 treehash = blockhash .| combineBlocks
@@ -39,9 +38,9 @@ combineBlocks = await >>= \case
       Just h  -> go $! combineHashes (level0 h) levelHashes
 
     level0 h = LevelHash { level = 0, hashValue = h }
-    revConcatHashes h1 h2 = let result = hashFinalize $ hashUpdates hashInit [h2,h1] in result `deepseq` result
+    revConcatHashes h1 h2 = hashFinalize $ hashUpdates hashInit [h2,h1]
 
     combineHashes x1 [] = [x1]
-    combineHashes x1 xs@(x2:xs') = if level x1 == level x2 then combined `seq` combineHashes combined xs' else x1 : xs
+    combineHashes x1 xs@(x2:xs') = if level x1 == level x2 then combineHashes combined xs' else x1 : xs
       where
         combined = LevelHash { level = level x1 + 1, hashValue = revConcatHashes (hashValue x1) (hashValue x2) }
