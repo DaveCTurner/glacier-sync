@@ -7,6 +7,7 @@ import Crypto.Hash
 import qualified Data.ByteString as B
 import Data.Conduit
 import Data.List
+import qualified Data.Conduit.Combinators as DCC
 import qualified Data.Conduit.List as DCL
 
 treehash :: Monad m => ConduitM B.ByteString Void m (Digest SHA256)
@@ -30,12 +31,10 @@ data LevelHash = LevelHash { level :: !Int, hashValue :: !(Digest SHA256) }
 combineBlocks :: Monad m => ConduitM (Digest SHA256) Void m (Digest SHA256)
 combineBlocks = await >>= \case
   Nothing -> return $ hashFinalize hashInit
-  Just h0 -> go [level0 h0]
+  Just h0 -> foldl1' revConcatHashes . map hashValue <$> DCC.foldl go [level0 h0]
 
   where
-    go levelHashes = await >>= \case
-      Nothing -> return $ foldl1' revConcatHashes $ map hashValue levelHashes
-      Just h  -> go $! combineHashes (level0 h) levelHashes
+    go levelHashes h = combineHashes (level0 h) levelHashes
 
     level0 h = LevelHash { level = 0, hashValue = h }
     revConcatHashes h1 h2 = hashFinalize $ hashUpdates hashInit [h2,h1]
