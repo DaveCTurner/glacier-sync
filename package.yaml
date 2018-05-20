@@ -11,6 +11,12 @@ description:         Please see the README on GitHub at <https://github.com/Dave
 dependencies:
 - base >= 4.7 && < 5
 - amazonka-glacier
+- bytestring
+- cryptonite
+- conduit
+- base16-bytestring
+- text
+- deepseq
 
 library:
   source-dirs: src
