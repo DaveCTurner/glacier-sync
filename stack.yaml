@@ -43,6 +43,7 @@ packages:
 
 extra-deps:
 - amazonka-glacier-1.6.0
+- amazonka-sts-1.6.0
 - amazonka-core-1.6.0
 
 # Override default flag values for local packages and extra-deps
