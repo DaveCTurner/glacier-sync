@@ -51,8 +51,8 @@ spec = describe "Treehash" $ do
         yieldBlocks n = if n > 0 then yieldBlock >> yieldBlocks (n-1) else return ()
 
     it "calculates an unreasonably large number of blocks" $
-      Right (runConduitPure $ yieldBlocks 1000000 .| combineBlocks)
-        `shouldBe` hashFromBase16 "561c8bab6d588673248356f959ab2e2a954367bff8a43a8d3eac6654af7ceb7c"
+      Right (runConduitPure $ yieldBlocks 100000 .| combineBlocks)
+        `shouldBe` hashFromBase16 "cad3bee1b0141317ae257f7d72d7586bd1301901155dabf5a718f9c0bdfa3d3a"
 
   describe "blockhash" $ do
     let isHashesOfZeroes :: [T.Text] -> [Int] -> Spec
