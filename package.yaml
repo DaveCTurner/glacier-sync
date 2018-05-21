@@ -10,6 +10,7 @@ description:         Please see the README on GitHub at <https://github.com/Dave
 
 dependencies:
 - base >= 4.7 && < 5
+- amazonka
 - amazonka-glacier
 - amazonka-sts
 - bytestring
@@ -23,6 +24,17 @@ dependencies:
 - aeson
 - wai
 - warp
+- stm
+- http-client
+- http-types
+- http-client-tls
+- lens
+- mtl
+- either
+- timeout
+- time
+- iso8601-time
+- async
 
 library:
   source-dirs: src
