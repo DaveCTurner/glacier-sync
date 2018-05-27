@@ -1,12 +1,10 @@
 module LibMain where
 
-import Server
-import Network.Wai.Handler.Warp
-import Context
-import Control.Concurrent.STM.TVar
-import Network.AWS.Auth
-import Control.Concurrent.Async
-import Lister
+import           Context
+import           Control.Concurrent.Async
+import           Lister
+import           Network.Wai.Handler.Warp
+import           Server
 
 main :: IO ()
 main = do

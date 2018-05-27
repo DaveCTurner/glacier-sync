@@ -1,11 +1,11 @@
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds     #-}
 {-# LANGUAGE TypeOperators #-}
 
 module API where
 
-import API.Types
+import           API.Types
 
-import Servant.API
+import           Servant.API
 
 type API = "security" :> SecurityAPI
 
@@ -15,7 +15,7 @@ type SecurityAwsAPI =    "credentials" :> AwsSetCredentialsAPI
                     :<|> "config"      :> AwsSetSecurityConfigAPI
                     :<|> "mfa_code"    :> AwsSetMFACodeAPI
 
-type AwsSetCredentialsAPI    = SetJSON AwsSetCredentialsRequest 
+type AwsSetCredentialsAPI    = SetJSON AwsSetCredentialsRequest
 type AwsSetSecurityConfigAPI = SetJSON AwsSetSecurityConfigRequest
 type AwsSetMFACodeAPI        = SetJSON AwsSetMFACodeRequest
 

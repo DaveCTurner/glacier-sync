@@ -2,20 +2,19 @@
 
 module Lister where
 
-import Control.Concurrent.STM
-import Data.Conduit
-import qualified Data.Conduit.List as DCL
-import Network.AWS.Glacier.ListVaults
-import Network.AWS.Glacier.ListJobs
-import Network.AWS.Glacier.Types
-import Control.Lens hiding (Context)
-import Network.AWS
-import Control.Monad.IO.Class
-import Control.Exception
-import System.IO
-import Control.Monad
+import           Control.Concurrent.STM
+import           Control.Exception
+import           Control.Lens                   hiding (Context)
+import           Control.Monad
+import           Control.Monad.IO.Class
+import           Data.Conduit
+import qualified Data.Conduit.List              as DCL
+import           Network.AWS
+import           Network.AWS.Glacier.ListJobs
+import           Network.AWS.Glacier.ListVaults
+import           Network.AWS.Glacier.Types
 
-import Context
+import           Context
 
 showException :: SomeException -> IO ()
 showException = print
@@ -27,9 +26,7 @@ lister context = handle showException $ do
   env <- atomically $ maybe retry return . veEnv =<< readTVar (awsEnvVar context)
   liftIO $ putStrLn "got AWS env"
 
-  lgr  <- newLogger Trace stdout
-
-  runResourceT $ runAWS (env & envLogger .~ lgr) $ forM_ [Ireland] $ \region -> do
+  runResourceT $ runAWS env $ forM_ [Ireland] $ \region -> do
     liftIO $ putStrLn $ "Region: " ++ show region
     within region $ runConduit
       $  paginate (listVaults "-")

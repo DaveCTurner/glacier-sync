@@ -1,14 +1,12 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE LambdaCase   #-}
 
 module Treehash (blockhash, combineBlocks, treehash) where
 
-import Crypto.Hash
-import qualified Data.ByteString as B
-import Data.Conduit
-import Data.List
+import           Crypto.Hash
+import qualified Data.ByteString          as B
+import           Data.Conduit
 import qualified Data.Conduit.Combinators as DCC
-import qualified Data.Conduit.List as DCL
+import           Data.List
 
 treehash :: Monad m => ConduitM B.ByteString Void m (Digest SHA256)
 treehash = blockhash .| combineBlocks

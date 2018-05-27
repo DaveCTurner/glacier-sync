@@ -1,32 +1,35 @@
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module Server where
 
-import API
-import API.Types
-import Servant hiding (Context)
-import Network.Wai
-import Data.Proxy
-import Control.Monad.IO.Class
-import Context
-import Control.Concurrent.STM
-import Network.AWS
-import Network.AWS.Env
-import Network.AWS.STS.AssumeRole
-import Control.Lens hiding (Context)
-import Network.HTTP.Client hiding (Proxy)
-import Network.HTTP.Types.Header
-import Network.HTTP.Client.TLS
-import Control.Monad.Except
-import Data.Either.Combinators
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
-import qualified Data.ByteString.Lazy as BL
-import Control.Timeout
-import Control.Concurrent
-import Data.Time
-import Data.Time.ISO8601
+import           API
+import           API.Types
+import           Context
+import           Control.Concurrent
+import           Control.Concurrent.STM
+import           Control.Lens                   hiding (Context, (.=))
+import           Control.Monad.Except
+import           Control.Timeout
+import           Data.Aeson
+import qualified Data.ByteString.Lazy           as BL
+import           Data.Proxy
+import qualified Data.Text                      as T
+import qualified Data.Text.Encoding             as T
+import           Data.Time
+import           Data.Time.ISO8601
+import           Network.AWS
+import           Network.AWS.Env                (newEnvWith)
+import           Network.AWS.Glacier.ListVaults
+import           Network.AWS.STS.AssumeRole
+import           Network.HTTP.Client            hiding (Proxy)
+import           Network.HTTP.Client.TLS
+import           Network.HTTP.Types.Header
+import           Network.Wai
+import           Servant                        hiding (Context)
+import           StoredCredentials
+import           System.FilePath                ((</>))
+import           System.IO                      (IOMode (WriteMode), withFile)
 
 throwErrorShow :: Show e => e -> Handler a
 throwErrorShow = throwErrorString . show
@@ -59,7 +62,7 @@ application context = serve (Proxy :: Proxy API) serveAPI where
       { awsAccessKey = awsSetCredentialsRequestAccessKey
       , awsSecretKey = awsSetCredentialsRequestSecretKey
       })
-    updateEnv Nothing
+    void $ updateEnv Nothing
     return NoContent
 
   serveAwsSetSecurityConfigAPI :: Server AwsSetSecurityConfigAPI
@@ -68,16 +71,16 @@ application context = serve (Proxy :: Proxy API) serveAPI where
       { awsMfaSerial = awsSetSecurityConfigRequestMfaSerialNumber
       , awsRoleArn   = awsSetSecurityConfigRequestRoleArn
       })
-    updateEnv Nothing
+    void $ updateEnv Nothing
     return NoContent
 
   serveAwsSetMFACodeAPI :: Server AwsSetMFACodeAPI
   serveAwsSetMFACodeAPI AwsSetMFACodeRequest{..} = do
     AwsConfig
-      { awsAccessKey = currentAccessKey
-      , awsSecretKey = RedactedSecretKey currentSecretKey
-      , awsRoleArn   = RoleArn           currentRoleArn
-      , awsMfaSerial = MfaSerial         currentMfaSerial
+      { awsAccessKey =           currentAccessKey
+      , awsSecretKey = Redacted  currentSecretKey
+      , awsRoleArn   = RoleArn   currentRoleArn
+      , awsMfaSerial = MfaSerial currentMfaSerial
       } <- liftIO $ readTVarIO (awsConfigVar context)
 
     when (currentAccessKey == AccessKey "" || currentSecretKey == SecretKey "")
@@ -94,7 +97,7 @@ application context = serve (Proxy :: Proxy API) serveAPI where
 
       let MfaCode rawMfaCode = awsSetMFACodeRequestMfaCode
 
-      runResourceT $ runAWS env $ trying _Error $ send $ assumeRole currentRoleArn "glacier-sync"
+      runResourceT $ runAWS env $ trying _Error $ send $ assumeRole currentRoleArn "glacier-sync-session-name"
         & arTokenCode    .~ Just rawMfaCode
         & arSerialNumber .~ Just currentMfaSerial
 
@@ -102,17 +105,33 @@ application context = serve (Proxy :: Proxy API) serveAPI where
 
     let liftMaybe message = maybe (throwErrorString message) return
 
-    assumeRoleResponse <- either throwErrorShow return errorOrAssumeRoleResponse
-    authEnv <- liftMaybe "no credentials returned" $ assumeRoleResponse ^. arrsCredentials
+    assumeRoleResult <- either throwErrorShow return errorOrAssumeRoleResponse
+    authEnv <- liftMaybe "no credentials returned" $ assumeRoleResult ^. arrsCredentials
     let newSessionAccessKey = authEnv ^. accessKeyId
         newSessionSecretKey = authEnv ^. secretAccessKey
     newSessionToken  <- liftMaybe "no session token returned"  $ authEnv ^. sessionToken
-    newSessionExpiry <- liftMaybe "no session expiry returned" $ authEnv ^. expiration
+    newSessionExpiry <- addUTCTime (-600) -- destroy it 10 minutes before expiry
+                    <$> liftMaybe "no session expiry returned" (authEnv ^. expiration)
 
-    maybeNewVersion <- updateEnv . Just =<< liftIO (newEnvWith (FromSession newSessionAccessKey newSessionSecretKey newSessionToken) (Just False) httpManager)
-    newVersion <- liftMaybe "impossible? environment not updated" maybeNewVersion
+    sessionEnv <- liftIO $ newEnvWith (FromSession newSessionAccessKey newSessionSecretKey newSessionToken) (Just False) httpManager
 
-    void $ liftIO $ forkIO $ scheduleEnvDestruction newVersion $ addUTCTime (-600) newSessionExpiry -- destroy it 10 minutes before expiry
+    -- verify env can list vaults
+    either throwErrorShow (const $ return ()) =<< liftIO (runResourceT $ runAWS sessionEnv $ within Ireland $ trying _Error $ send $ listVaults "-" & lvLimit .~ Just "10")
+
+    newVersion <- liftMaybe "impossible? environment not updated" =<< updateEnv (Just sessionEnv)
+    void $ liftIO $ forkIO $ scheduleEnvDestruction newVersion newSessionExpiry
+
+    -- save env details for later
+    liftIO $ withFile (configPath context </> "credentials.json") WriteMode $ \h -> BL.hPutStr h $ encode $ StoredCredentials
+      { storedCredentialsAccessKey        =           currentAccessKey
+      , storedCredentialsSecretKey        = Redacted  currentSecretKey
+      , storedCredentialsRoleArn          = RoleArn   currentRoleArn
+      , storedCredentialsMfaSerial        = MfaSerial currentMfaSerial
+      , storedCredentialsSessionAccessKey =           newSessionAccessKey
+      , storedCredentialsSessionSecretKey = Redacted  newSessionSecretKey
+      , storedCredentialsSessionToken     = Redacted  newSessionToken
+      , storedCredentialsSessionExpiry    =           newSessionExpiry
+      }
 
     return NoContent
 
@@ -161,3 +180,4 @@ application context = serve (Proxy :: Proxy API) serveAPI where
   updateEnv = liftIO . join . atomically . updateEnvSTM
 
 data UpdateEnvChange = CreateNewEnv | DestroyOldEnv | ReplaceEnv
+

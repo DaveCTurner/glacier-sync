@@ -1,24 +1,24 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
 
 module API.Types where
 
-import qualified Data.Text as T
-import Data.Aeson
-import Data.String
-import Network.AWS.Auth
+import           Data.Aeson
+import qualified Data.Text        as T
+import           Network.AWS.Auth
 
-newtype RedactedSecretKey = RedactedSecretKey SecretKey deriving (Eq, FromJSON)
-instance Show RedactedSecretKey where show _ = "<REDACTED>"
+newtype Redacted a = Redacted a deriving (Eq, FromJSON, ToJSON)
 
-newtype MfaSerial = MfaSerial T.Text deriving (Show, Eq, FromJSON)
-newtype RoleArn   = RoleArn   T.Text deriving (Show, Eq, FromJSON)
-newtype MfaCode   = MfaCode   T.Text deriving (Show, Eq, FromJSON)
+instance Show (Redacted a) where show _ = "<REDACTED>"
+
+newtype MfaSerial = MfaSerial T.Text deriving (Show, Eq, ToJSON, FromJSON)
+newtype RoleArn   = RoleArn   T.Text deriving (Show, Eq, ToJSON, FromJSON)
+newtype MfaCode   = MfaCode   T.Text deriving (Show, Eq, ToJSON, FromJSON)
 
 data AwsSetCredentialsRequest = AwsSetCredentialsRequest
   { awsSetCredentialsRequestAccessKey :: AccessKey
-  , awsSetCredentialsRequestSecretKey :: RedactedSecretKey
-  } deriving (Show, Eq) 
+  , awsSetCredentialsRequestSecretKey :: Redacted SecretKey
+  } deriving (Show, Eq)
 
 instance FromJSON AwsSetCredentialsRequest where
   parseJSON = withObject "AwsSetCredentialsRequest" $ \v ->

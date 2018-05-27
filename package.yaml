@@ -35,9 +35,13 @@ dependencies:
 - time
 - iso8601-time
 - async
+- filepath
 
 library:
   source-dirs: src
+  ghc-options:
+    - -Wall
+    - -Werror
 
 executables:
   glacier-sync:
