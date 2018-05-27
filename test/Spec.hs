@@ -2,9 +2,9 @@
 
 module Main where
 
-import Test.Hspec
-import qualified TreehashSpec
 import qualified API.TypesSpec
+import           Test.Hspec
+import qualified TreehashSpec
 
 main :: IO ()
 main = hspec $ do

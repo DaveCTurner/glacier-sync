@@ -1,21 +1,20 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE BangPatterns #-}
 
 module TreehashSpec (spec) where
 
-import Test.Hspec
-import Treehash
+import           Control.DeepSeq
+import           Control.Monad
+import           Crypto.Hash
+import qualified Data.ByteString        as B
 import qualified Data.ByteString.Base16 as B16
-import qualified Data.ByteString as B
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
-import Data.Conduit
-import qualified Data.Conduit.List as DCL
-import Data.Maybe
-import Crypto.Hash
-import Control.Monad
-import Control.DeepSeq
+import           Data.Conduit
+import qualified Data.Conduit.List      as DCL
+import           Data.Maybe
+import qualified Data.Text              as T
+import qualified Data.Text.Encoding     as T
+import           Test.Hspec
+import           Treehash
 
 hashFromBase16 :: T.Text -> Either String (Digest SHA256)
 hashFromBase16 b16 = maybe (Left $ show b16 ++ " not a valid SHA256 hash") Right
@@ -23,17 +22,17 @@ hashFromBase16 b16 = maybe (Left $ show b16 ++ " not a valid SHA256 hash") Right
   where
   maybeBytes = case B16.decode $ T.encodeUtf8 b16 of
     (bytes, trailing) | B.null trailing -> Just bytes
-    _                                   -> Nothing 
+    _                                   -> Nothing
 
 combineBlocksIterative :: Monad m => ConduitM (Digest SHA256) Void m (Digest SHA256)
 combineBlocksIterative = whileMoreLevels <$> DCL.consume
   where
-  whileMoreLevels [] = hashFinalize hashInit
+  whileMoreLevels []  = hashFinalize hashInit
   whileMoreLevels [x] = x
-  whileMoreLevels xs = xs `deepseq` whileMoreLevels (nextLevel xs)
+  whileMoreLevels xs  = xs `deepseq` whileMoreLevels (nextLevel xs)
 
-  nextLevel [] = []
-  nextLevel [x] = [x]
+  nextLevel []         = []
+  nextLevel [x]        = [x]
   nextLevel (x1:x2:xs) = concatHashes x1 x2 : nextLevel xs
 
   concatHashes h1 h2 = hashFinalize $ hashUpdates hashInit [h1,h2]

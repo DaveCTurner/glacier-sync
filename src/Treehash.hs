@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase   #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Treehash (blockhash, combineBlocks, treehash) where
 

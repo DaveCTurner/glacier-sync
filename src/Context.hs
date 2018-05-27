@@ -39,3 +39,6 @@ makeEmptyContext = Context
     <$> newTVarIO emptyAwsConfig
     <*> newTVarIO (VersionedEnv 0 Nothing)
     <*> ((</> ".glacier-sync") <$> getEnv "HOME")
+
+credentialsFile :: Context -> FilePath
+credentialsFile = (</> "credentials.json") . configPath
