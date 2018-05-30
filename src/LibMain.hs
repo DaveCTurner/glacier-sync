@@ -13,6 +13,6 @@ main = do
   context <- makeEmptyContext
   loadStoredCredentialsIfAvailable context
   treeHashesCollections <- loadTreehashes context
-  print treeHashesCollections
+  print $ map (length . treehashesCollectionEntries) treeHashesCollections
   withAsync (lister context) $ \_ -> do
     run 8081 $ application context
