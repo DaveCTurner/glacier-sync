@@ -16,6 +16,7 @@ dependencies:
 - bytestring
 - cryptonite
 - conduit
+- conduit-extra
 - base16-bytestring
 - text
 - deepseq
@@ -36,6 +37,10 @@ dependencies:
 - iso8601-time
 - async
 - filepath
+- attoparsec
+- word8
+- unix
+- resourcet
 
 library:
   source-dirs: src

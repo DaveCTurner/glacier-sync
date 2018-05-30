@@ -8,6 +8,7 @@ import           API.Types
 import           Context
 import           Control.Concurrent
 import           Control.Concurrent.STM
+import           Control.Exception
 import           Control.Lens                   hiding (Context, (.=))
 import           Control.Monad.Except
 import           Control.Timeout
@@ -23,7 +24,6 @@ import           Network.HTTP.Client.TLS
 import           Servant                        hiding (Context)
 import           ServantUtils
 import           System.IO                      (IOMode (WriteMode), withFile)
-import Control.Exception
 
 data StoredSessionCredentials = StoredSessionCredentials
   { storedSessionCredentialsAccessKey :: AccessKey
@@ -92,8 +92,9 @@ createAndValidateEnv context storedCredentials = do
   -- verify env can list vaults
   either throwErrorShow (const $ return ()) =<< liftIO (runResourceT $ runAWS sessionEnv $ within Ireland $ trying _Error $ send $ listVaults "-" & lvLimit .~ Just "10")
 
-  newVersion <- liftMaybe "impossible? environment not updated" =<< updateEnv (awsEnvVar context) (Just sessionEnv)
-  void $ liftIO $ forkIO $ scheduleEnvDestruction (awsEnvVar context) newVersion (storedSessionCredentialsExpiry $ storedCredentialsSession storedCredentials)
+  let sessionExpiry = storedSessionCredentialsExpiry $ storedCredentialsSession storedCredentials
+  newVersion <- liftMaybe "impossible? environment not updated" =<< updateEnv (awsEnvVar context) (Just (sessionEnv, sessionExpiry))
+  void $ liftIO $ forkIO $ scheduleEnvDestruction (awsEnvVar context) newVersion sessionExpiry
 
   -- save env details for later
   liftIO $ withFile (credentialsFile context) WriteMode $ \h -> BL.hPutStr h $ encode storedCredentials
@@ -114,7 +115,7 @@ scheduleEnvDestruction envVar versionToDestroy expiryTime = do
           then updateEnvSTM envVar Nothing
           else return $ return Nothing
 
-updateEnvSTM :: TVar VersionedEnv -> Maybe Env -> STM (IO (Maybe Int))
+updateEnvSTM :: TVar VersionedEnv -> Maybe (Env, UTCTime) -> STM (IO (Maybe Int))
 updateEnvSTM envVar maybeEnv = do
   oldVersionedEnv <- readTVar envVar
   let oldEnvVersion = veVersion oldVersionedEnv
@@ -139,7 +140,7 @@ updateEnvSTM envVar maybeEnv = do
           ReplaceEnv    -> "replacing environment version " ++ show oldEnvVersion ++ " with version " ++ show newEnvVersion
         return $ Just newEnvVersion
 
-updateEnv :: MonadIO m => TVar VersionedEnv -> Maybe Env -> m (Maybe Int)
+updateEnv :: MonadIO m => TVar VersionedEnv -> Maybe (Env, UTCTime) -> m (Maybe Int)
 updateEnv envVar = liftIO . join . atomically . updateEnvSTM envVar
 
 data UpdateEnvChange = CreateNewEnv | DestroyOldEnv | ReplaceEnv
@@ -154,4 +155,10 @@ loadStoredCredentialsIfAvailable context = tryLoad `catch` ignoreIOException
     bytes <- BL.readFile (credentialsFile context)
     void $ runExceptT $ do
       credentials <- liftMaybe "JSON parse error" $ decode bytes
+      liftIO $ atomically $ writeTVar (awsConfigVar context) $ AwsConfig
+        { awsAccessKey = storedCredentialsAccessKey credentials
+        , awsSecretKey = storedCredentialsSecretKey credentials
+        , awsRoleArn   = storedCredentialsRoleArn   credentials
+        , awsMfaSerial = storedCredentialsMfaSerial credentials
+        }
       createAndValidateEnv context credentials

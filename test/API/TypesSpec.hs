@@ -17,7 +17,7 @@ spec :: Spec
 spec = describe "API.TypesSpec" $ do
   describe "AwsSetCredentialsRequest" $ do
     "{\"access_key\":\"ak\",\"secret_key\":\"sk\"}" `shouldParseAs`
-      AwsSetCredentialsRequest (AccessKey "ak") (RedactedSecretKey "sk")
+      AwsSetCredentialsRequest (AccessKey "ak") (Redacted "sk")
 
   describe "AwsSetSecurityConfigRequest" $ do
     "{\"mfa_serial\":\"abc\",\"role_arn\":\"def\"}" `shouldParseAs`

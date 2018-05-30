@@ -1,10 +1,12 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
 
 module API.Types where
 
 import           Data.Aeson
 import qualified Data.Text        as T
+import           Data.Time
 import           Network.AWS.Auth
 
 newtype Redacted a = Redacted a deriving (Eq, FromJSON, ToJSON)
@@ -40,3 +42,20 @@ data AwsSetMFACodeRequest = AwsSetMFACodeRequest
 instance FromJSON AwsSetMFACodeRequest where
   parseJSON = withObject "AwsSetMFACodeRequest" $ \v ->
     AwsSetMFACodeRequest <$> v .: "mfa_code"
+
+data AwsGetStatusResponse = AwsGetStatusResponse
+  { awsGetStatusResponseMfaSerial          :: MfaSerial
+  , awsGetStatusResponseRoleArn            :: RoleArn
+  , awsGetStatusResponseEnvironmentVersion :: Int
+  , awsGetStatusSessionExpiry              :: Maybe UTCTime
+  } deriving (Show, Eq)
+
+instance ToJSON AwsGetStatusResponse where
+  toJSON AwsGetStatusResponse{..} = object
+    [ "mfa_serial"          .= awsGetStatusResponseMfaSerial
+    , "role_arn"            .= awsGetStatusResponseRoleArn
+    , "environment_version" .= awsGetStatusResponseEnvironmentVersion
+    , "session" .= object (case awsGetStatusSessionExpiry of
+        Nothing -> ["open" .= False]
+        Just e  -> ["open" .= True, "expiry" .= e])
+    ]

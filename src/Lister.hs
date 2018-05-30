@@ -23,7 +23,7 @@ lister :: Context -> IO ()
 lister context = handle showException $ do
 
   liftIO $ putStrLn "waiting for AWS env"
-  env <- atomically $ maybe retry return . veEnv =<< readTVar (awsEnvVar context)
+  (env, _) <- atomically $ maybe retry return . veEnv =<< readTVar (awsEnvVar context)
   liftIO $ putStrLn "got AWS env"
 
   runResourceT $ runAWS env $ forM_ [Ireland] $ \region -> do

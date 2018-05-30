@@ -35,6 +35,21 @@ application context = serve (Proxy :: Proxy API) serveAPI where
   serveSecurityAwsAPI = serveAwsSetCredentialsAPI
                    :<|> serveAwsSetSecurityConfigAPI
                    :<|> serveAwsSetMFACodeAPI
+                   :<|> serveAwsGetStatusAPI
+
+  serveAwsGetStatusAPI :: Server AwsGetStatusAPI
+  serveAwsGetStatusAPI = do
+    AwsConfig
+      { awsRoleArn   = awsGetStatusResponseRoleArn
+      , awsMfaSerial = awsGetStatusResponseMfaSerial
+      } <- liftIO $ readTVarIO $ awsConfigVar context
+    VersionedEnv
+      { veVersion = awsGetStatusResponseEnvironmentVersion
+      , veEnv     = maybeEnvExpiry
+      } <- liftIO $ readTVarIO $ awsEnvVar context
+    return $ AwsGetStatusResponse
+      { awsGetStatusSessionExpiry = snd <$> maybeEnvExpiry
+      , .. }
 
   serveAwsSetCredentialsAPI :: Server AwsSetCredentialsAPI
   serveAwsSetCredentialsAPI AwsSetCredentialsRequest{..} = liftIO $ atomically $ do

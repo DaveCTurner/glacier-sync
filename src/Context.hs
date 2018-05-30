@@ -4,6 +4,7 @@ module Context where
 
 import           API.Types
 import           Control.Concurrent.STM.TVar
+import           Data.Time
 import           Network.AWS
 import           System.Environment          (getEnv)
 import           System.FilePath             (FilePath, (</>))
@@ -25,7 +26,7 @@ emptyAwsConfig = AwsConfig
 
 data VersionedEnv = VersionedEnv
   { veVersion :: !Int
-  , veEnv     :: (Maybe Env)
+  , veEnv     :: (Maybe (Env, UTCTime))
   }
 
 data Context = Context
