@@ -10,37 +10,39 @@ description:         Please see the README on GitHub at <https://github.com/Dave
 
 dependencies:
 - base >= 4.7 && < 5
+- aeson
 - amazonka
+- amazonka-core
 - amazonka-glacier
 - amazonka-sts
+- async
+- attoparsec
+- base16-bytestring
+- base64-bytestring
 - bytestring
-- cryptonite
 - conduit
 - conduit-extra
-- base16-bytestring
-- text
+- cryptonite
 - deepseq
-- servant
-- servant-server
-- aeson
-- wai
-- warp
-- stm
+- either
+- filepath
 - http-client
-- http-types
 - http-client-tls
+- http-types
+- iso8601-time
 - lens
 - mtl
-- either
-- timeout
-- time
-- iso8601-time
-- async
-- filepath
-- attoparsec
-- word8
-- unix
 - resourcet
+- servant
+- servant-server
+- stm
+- text
+- time
+- timeout
+- unix
+- wai
+- warp
+- word8
 
 library:
   source-dirs: src

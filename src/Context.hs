@@ -6,8 +6,8 @@ import           API.Types
 import           Control.Concurrent.STM
 import           Data.Time
 import           Network.AWS
-import           System.Environment          (getEnv)
-import           System.FilePath             (FilePath, (</>))
+import           System.Environment     (getEnv)
+import           System.FilePath        (FilePath, (</>))
 
 data AwsConfig = AwsConfig
   { awsAccessKey :: !AccessKey

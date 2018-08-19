@@ -21,7 +21,7 @@ import           Network.Wai
 import           Servant                    hiding (Context)
 import           ServantUtils
 import           StoredCredentials
-import           Upload (uploadBackground)
+import           Upload                     (uploadBackground)
 
 application :: Context -> Application
 application context = serve (Proxy :: Proxy API) serveAPI where

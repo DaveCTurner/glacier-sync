@@ -5,14 +5,13 @@ import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Trans.Resource
 import           Crypto.Hash
-import qualified Data.Attoparsec.ByteString        as AP
-import qualified Data.ByteString                   as B
-import qualified Data.ByteString.Base16            as B16
+import qualified Data.Attoparsec.ByteString   as AP
+import qualified Data.ByteString              as B
+import qualified Data.ByteString.Base16       as B16
 import           Data.Conduit
-import           Data.Conduit.Attoparsec           (sinkParser)
-import           Data.Conduit.Combinators          (sourceDirectoryDeep,
-                                                    sourceFile)
-import qualified Data.Conduit.List                 as DCL
+import           Data.Conduit.Attoparsec      (sinkParser)
+import           Data.Conduit.Combinators     (sourceDirectoryDeep, sourceFile)
+import qualified Data.Conduit.List            as DCL
 import           Data.Word
 import           Data.Word8
 import           System.FilePath
