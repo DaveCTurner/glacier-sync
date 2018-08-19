@@ -45,6 +45,9 @@ import           Treehash
 partSize :: Int
 partSize = 16 * 1024 * 1024
 
+burstSize :: Int
+burstSize = 50000
+
 uploadBackground :: Context -> StartUploadRequest -> IO ()
 uploadBackground context rq = void $ forkIO $ do
   t <- myThreadId
@@ -76,7 +79,7 @@ upload _env rq = do
 
   let uploadId = "TODO"
 
-  rateLimiter <- newRateLimiter 50000 50000
+  rateLimiter <- newRateLimiter burstSize 50000
 
   (totalSize, finalChecksum) <- runResourceT $ runConduit $ sourceFile filename
     .| splitIntoParts
@@ -115,6 +118,12 @@ splitIntoParts = go 0 0 []
                                 leftover chunkInNextPart
                                 go 0 (chunkStartPosition + fromIntegral (currentSize + B.length chunkInThisPart)) []
 
+ensureSmallerThan :: Monad m => Int -> ConduitM B.ByteString B.ByteString m ()
+ensureSmallerThan maxSize = awaitForever $ \chunk ->
+  let (firstChunk, overflow) = B.splitAt maxSize chunk in do
+    unless (B.null firstChunk) $ yield firstChunk
+    unless (B.null overflow) $ leftover overflow
+
 uploadPart :: MonadIO m => T.Text -> T.Text -> RateLimiter -> ConduitM (Integer, [B.ByteString]) (Int, Digest SHA256) m ()
 uploadPart vn uid rateLimiter = awaitForever $ \(partStartPosition, partChunks) -> let
   len = sum (map B.length partChunks)
@@ -126,10 +135,20 @@ uploadPart vn uid rateLimiter = awaitForever $ \(partStartPosition, partChunks) 
     & umpRange    .~ Just (T.pack $ "bytes " ++ show partStartPosition ++ "-" ++ show (partStartPosition + fromIntegral len) ++ "/*")
   in do
     liftIO $ print ump
-    liftIO $ runResourceT $ runConduit $ yieldsChunks .| awaitForever (\chunk ->
-      liftIO $ print $ B.length chunk
-      )
+    liftIO $ runResourceT $ runConduit $ yieldsChunks .| showProgress
     yield (len, trh)
+
+showProgress :: MonadIO m => ConduitM B.ByteString Void m ()
+showProgress = go =<< liftIO getCurrentTime
+  where
+  go startTime = loop (0 :: Integer)
+    where
+    loop bytesSoFar = awaitForever $ \chunk -> let bytesSoFar' = bytesSoFar + fromIntegral (B.length chunk) in do
+      liftIO $ do
+        now <- getCurrentTime
+        putStrLn $ show bytesSoFar' ++ " bytes in " ++ show (diffUTCTime now startTime) ++ " is "
+          ++ show (fromIntegral bytesSoFar' / fromRational (toRational $ diffUTCTime now startTime) :: Double) ++ "bps"
+      loop bytesSoFar'
 
 sumSizes :: Monad m => ConduitM (Int, a) a m Integer
 sumSizes = go 0
@@ -148,15 +167,11 @@ normalHash = go hashInit
     Just bs -> go $ hashUpdate ctx bs
 
 rateLimitedConduit :: MonadIO m => RateLimiter -> ConduitM B.ByteString B.ByteString m ()
-rateLimitedConduit rateLimiter = awaitForever uploadChunk
+rateLimitedConduit rateLimiter = ensureSmallerThan (bucketCapacity rateLimiter) .| awaitForever uploadChunk
   where
-  uploadChunk chunk = unless (B.null chunk) $ do
-    maxPermitted <- liftIO $ getPermitted rateLimiter $ B.length chunk
-    let (okToSend, notToSend) = B.splitAt maxPermitted chunk
-    unless (B.null okToSend) $ yield okToSend
-    unless (B.null notToSend) $ do
-      liftIO $ threadDelay 250000
-      leftover notToSend
+  uploadChunk chunk = do
+    liftIO $ waitForCapacity rateLimiter $ B.length chunk
+    yield chunk
 
 data RateLimiter = RateLimiter
   { lastSampleVar  :: IORef (UTCTime, Int)
@@ -170,16 +185,17 @@ newRateLimiter cap rate = do
   r <- newIORef (now, 0)
   return $ RateLimiter r cap rate
 
-getPermitted :: RateLimiter -> Int -> IO Int
-getPermitted rl desiredUnits = do
+waitForCapacity :: RateLimiter -> Int -> IO ()
+waitForCapacity rl requiredUnits = do
   now <- getCurrentTime
-  atomicModifyIORef' (lastSampleVar rl) $ \(lastSampleTime, lastSampleLevel) -> let
+  awaitingUnits <- atomicModifyIORef' (lastSampleVar rl) $ \(lastSampleTime, lastSampleLevel) -> let
     elapsedSeconds = fromRational $ toRational $ diffUTCTime now lastSampleTime
     leakedUnits    = floor $ leakRate rl * elapsedSeconds
     levelAfterLeak = max 0 $ lastSampleLevel - leakedUnits
     availableUnits = bucketCapacity rl - levelAfterLeak
-    allocatedUnits = min availableUnits desiredUnits
-    in if allocatedUnits <= 0
-        then ((lastSampleTime, lastSampleLevel), 0)
-        else ((now, levelAfterLeak + allocatedUnits), allocatedUnits)
-
+    in if availableUnits < requiredUnits
+      then ((lastSampleTime, lastSampleLevel), requiredUnits - availableUnits)
+      else ((now, levelAfterLeak + requiredUnits), 0)
+  when (awaitingUnits > 0) $ do
+    threadDelay $ ceiling $ 1.0e6 * fromIntegral awaitingUnits / leakRate rl
+    waitForCapacity rl requiredUnits
