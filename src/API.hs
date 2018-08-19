@@ -7,7 +7,8 @@ import           API.Types
 
 import           Servant.API
 
-type API = "security" :> SecurityAPI
+type API =    "security" :> SecurityAPI
+         :<|> "upload"   :> UploadAPI
 
 type SecurityAPI = "aws" :> SecurityAwsAPI
 
@@ -23,3 +24,4 @@ type AwsGetStatusAPI         = Get '[JSON] AwsGetStatusResponse
 
 type SetJSON a = ReqBody '[JSON] a :> PostAccepted '[PlainText] NoContent
 
+type UploadAPI = SetJSON StartUploadRequest

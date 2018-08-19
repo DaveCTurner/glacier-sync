@@ -3,7 +3,7 @@
 module Context where
 
 import           API.Types
-import           Control.Concurrent.STM.TVar
+import           Control.Concurrent.STM
 import           Data.Time
 import           Network.AWS
 import           System.Environment          (getEnv)
@@ -43,3 +43,6 @@ makeEmptyContext = Context
 
 credentialsFile :: Context -> FilePath
 credentialsFile = (</> "credentials.json") . configPath
+
+getAwsEnv :: Context -> IO Env
+getAwsEnv context = atomically $ maybe retry (return . fst) <$> veEnv =<< readTVar (awsEnvVar context)

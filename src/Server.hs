@@ -21,12 +21,13 @@ import           Network.Wai
 import           Servant                    hiding (Context)
 import           ServantUtils
 import           StoredCredentials
+import           Upload (uploadBackground)
 
 application :: Context -> Application
 application context = serve (Proxy :: Proxy API) serveAPI where
 
   serveAPI :: Server API
-  serveAPI = serveSecurityAPI
+  serveAPI = serveSecurityAPI :<|> serveUploadAPI
 
   serveSecurityAPI :: Server SecurityAPI
   serveSecurityAPI = serveSecurityAwsAPI
@@ -115,3 +116,7 @@ application context = serve (Proxy :: Proxy API) serveAPI where
 
     return NoContent
 
+  serveUploadAPI :: Server UploadAPI
+  serveUploadAPI startUploadRequest = do
+    liftIO $ uploadBackground context startUploadRequest
+    return NoContent
