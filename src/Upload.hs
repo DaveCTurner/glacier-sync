@@ -48,7 +48,7 @@ burstSize :: Int
 burstSize = 50000
 
 uploadBackground :: Context -> StartUploadRequest -> TaskInner -> IO ()
-uploadBackground context rq taskInner = do
+uploadBackground context rq taskInner = withUploaderSlot context taskInner $ do
   let awsEnv = undefined context
   upload taskInner awsEnv rq
 
