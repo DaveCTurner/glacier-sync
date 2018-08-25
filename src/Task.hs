@@ -1,19 +1,19 @@
-{-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE Rank2Types        #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module Task where
 
-import Data.Aeson
-import qualified Data.HashMap.Strict as HM
-import Control.Concurrent.STM
-import Control.Concurrent
-import Control.Exception
-import GHC.Conc (labelThread)
-import qualified Data.Text.Lazy as TL
+import           Control.Concurrent
+import           Control.Concurrent.STM
+import           Control.Exception
+import           Control.Monad
+import           Data.Aeson
+import qualified Data.HashMap.Strict     as HM
+import qualified Data.Text.Lazy          as TL
 import qualified Data.Text.Lazy.Encoding as TL
-import Data.Time
-import Control.Monad
+import           Data.Time
+import           GHC.Conc                (labelThread)
 
 data Task = Task
   { taskId              :: Integer

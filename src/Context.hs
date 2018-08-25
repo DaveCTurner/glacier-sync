@@ -3,16 +3,16 @@
 module Context where
 
 import           Control.Concurrent.STM
+import           Control.Exception
+import           Control.Monad
+import qualified Data.Text              as T
 import           Data.Time
 import           Network.AWS
 import           System.Environment     (getEnv)
 import           System.FilePath        (FilePath, (</>))
-import qualified Data.Text as T
-import Control.Exception
-import Control.Monad
 
-import Task
 import           API.Types
+import           Task
 
 data AwsConfig = AwsConfig
   { awsAccessKey :: !AccessKey
@@ -72,7 +72,7 @@ withUploaderSlot context taskInner go = mask $ \restore -> do
   awaitCancellation = do
     status <- taskSetStatus taskInner ("cancelled awaiting uploader slot" :: T.Text)
     case status of
-      Nothing -> retry
+      Nothing            -> retry
       Just TaskCancelled -> return False
 
   releaseSlot = do

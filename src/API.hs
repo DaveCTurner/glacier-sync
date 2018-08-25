@@ -4,7 +4,7 @@
 module API where
 
 import           API.Types
-import Task
+import           Task
 
 import           Servant.API
 

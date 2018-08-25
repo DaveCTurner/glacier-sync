@@ -3,9 +3,8 @@
 
 module Upload where
 
-import Data.Aeson
-import Control.Concurrent.STM
 import           Control.Concurrent                          (threadDelay)
+import           Control.Concurrent.STM
 import           Control.Lens                                (runIdentity, (&),
                                                               (.~))
 import           Control.Monad
@@ -16,6 +15,7 @@ import           Crypto.Hash                                 (HashAlgorithm,
                                                               hashFinalize,
                                                               hashInit,
                                                               hashUpdate)
+import           Data.Aeson
 import qualified Data.ByteString                             as B
 import qualified Data.ByteString.Base64                      as B64
 import           Data.Conduit
@@ -38,8 +38,8 @@ import           System.Posix.Files
 
 import           API.Types
 import           Context
+import           Task
 import           Treehash
-import Task
 
 partSize :: Int
 partSize = 16 * 1024 * 1024
