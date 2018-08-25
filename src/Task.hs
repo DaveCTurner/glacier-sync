@@ -90,13 +90,13 @@ forkTask :: (ToJSON description, ToJSON status)
   => TaskManager -> description -> status -> (TaskInner -> IO ()) -> IO Task
 forkTask taskManager description initialStatus go = mask $ \restore -> do
   taskStartTime <- getCurrentTime
-  (task, taskStatusVar, taskCancelledVar, finishTask) <- atomically $ do
+  (task, taskAction, finishTask) <- atomically $ do
     taskStatusVar    <- newTVar $ toJSON initialStatus
     taskCancelledVar <- newTVar False
     taskFinishedVar  <- newTVar False
     taskId           <- newTaskId taskManager
 
-    let finishTask message = do
+    let finishTask message = atomically $ do
           writeTVar taskFinishedVar True
           writeTVar taskStatusVar $ object [ "status"  .= String "finished"
                                            , "message" .= String message
@@ -111,19 +111,23 @@ forkTask taskManager description initialStatus go = mask $ \restore -> do
 
         task = Task{..}
 
+        taskAction = restore $ go TaskInner
+          { taskSetStatus      = \v -> do
+              taskCancelled <- readTVar taskCancelledVar
+              if taskCancelled
+                then return $ Just TaskCancelled
+                else do
+                  writeTVar taskStatusVar $ toJSON v
+                  return Nothing
+          }
+
     addTask taskManager task
 
-    return (task, taskStatusVar, taskCancelledVar, atomically . finishTask)
+    return (task, taskAction, finishTask)
 
-  tid <- forkIO (restore (go TaskInner
-      { taskSetStatus      = \v -> do
-          taskCancelled <- readTVar taskCancelledVar
-          if taskCancelled
-            then return $ Just TaskCancelled
-            else do
-              writeTVar taskStatusVar $ toJSON v
-              return Nothing
-      }) `finally` finishTask "finished") `onException` finishTask "failed to start"
+  tid <- forkIO (restore taskAction
+                 `finally` finishTask "finished")
+         `onException`     finishTask "failed to start"
 
   labelThread tid $ TL.unpack $ TL.decodeUtf8 $ encode $ toJSON description
 
