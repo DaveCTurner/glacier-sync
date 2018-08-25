@@ -22,12 +22,13 @@ import           Servant                    hiding (Context)
 import           ServantUtils
 import           StoredCredentials
 import           Upload                     (uploadBackground)
+import Task
 
 application :: Context -> Application
 application context = serve (Proxy :: Proxy API) serveAPI where
 
   serveAPI :: Server API
-  serveAPI = serveSecurityAPI :<|> serveUploadAPI
+  serveAPI = serveSecurityAPI :<|> serveUploadAPI :<|> serveTasksAPI
 
   serveSecurityAPI :: Server SecurityAPI
   serveSecurityAPI = serveSecurityAwsAPI
@@ -117,6 +118,24 @@ application context = serve (Proxy :: Proxy API) serveAPI where
     return NoContent
 
   serveUploadAPI :: Server UploadAPI
-  serveUploadAPI startUploadRequest = do
-    liftIO $ uploadBackground context startUploadRequest
-    return NoContent
+  serveUploadAPI startUploadRequest =
+    liftIO $ forkTask (ctxTaskManager context) startUploadRequest ("starting" :: String) $ uploadBackground context startUploadRequest
+
+  serveTasksAPI :: Server TasksAPI
+  serveTasksAPI = serveTasksList :<|> serveTaskAPI
+
+  serveTasksList :: Handler [Task]
+  serveTasksList = liftIO $ atomically $ getTasks $ ctxTaskManager context
+
+  serveTaskAPI :: Integer -> Server TaskAPI
+  serveTaskAPI taskId = serveGetTask :<|> serveDeleteTask
+    where
+    taskNotFound = throwError err404
+
+    serveGetTask :: Handler TaskStatus
+    serveGetTask = maybe taskNotFound return =<< liftIO (atomically $ getTaskStatus (ctxTaskManager context) taskId)
+
+    serveDeleteTask :: Handler NoContent
+    serveDeleteTask = do
+      success <- liftIO $ cancelTask (ctxTaskManager context) taskId
+      if success then return NoContent else taskNotFound

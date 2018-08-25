@@ -72,3 +72,10 @@ instance FromJSON StartUploadRequest where
       <$> v .: "mirror_path"
       <*> v .: "vault_name"
       <*> v .: "path"
+
+instance ToJSON StartUploadRequest where
+  toJSON StartUploadRequest{..} = object
+    [ "mirror_path" .= startUploadRequestMirrorPath
+    , "vault_name"  .= startUploadRequestVaultName
+    , "path"        .= startUploadRequestPath
+    ]

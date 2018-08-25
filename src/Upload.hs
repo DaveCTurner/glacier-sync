@@ -3,9 +3,8 @@
 
 module Upload where
 
-import           Control.Concurrent                          (forkIO,
-                                                              myThreadId,
-                                                              threadDelay)
+import Control.Concurrent.STM
+import           Control.Concurrent                          (threadDelay)
 import           Control.Lens                                (runIdentity, (&),
                                                               (.~))
 import           Control.Monad
@@ -28,7 +27,6 @@ import qualified Data.Text.Encoding                          as T
 import           Data.Time
 import           Data.Time.ISO8601
 import           Foreign.C.Types
-import           GHC.Conc.Sync                               (labelThread)
 import           Network.AWS                                 (Env)
 import           Network.AWS.Data.Body
 import           Network.AWS.Glacier.CompleteMultipartUpload
@@ -39,6 +37,7 @@ import           System.Posix.Files
 import           API.Types
 import           Context
 import           Treehash
+import Task
 
 -- TODO introduce "task" concept allowing for progress reporting, cancellation
 
@@ -48,17 +47,13 @@ partSize = 16 * 1024 * 1024
 burstSize :: Int
 burstSize = 50000
 
-uploadBackground :: Context -> StartUploadRequest -> IO ()
-uploadBackground context rq = void $ forkIO $ do
-  t <- myThreadId
-  labelThread t $ "upload[" ++ show rq ++ "]"
-  putStrLn $ "Uploading " ++ show rq ++ " with " ++ show t
-  --awsEnv <- getAwsEnv context
+uploadBackground :: Context -> StartUploadRequest -> TaskInner -> IO ()
+uploadBackground context rq taskInner = do
   let awsEnv = undefined context
-  upload awsEnv rq
+  upload taskInner awsEnv rq
 
-upload :: Env -> StartUploadRequest -> IO ()
-upload _env rq = do
+upload :: TaskInner -> Env -> StartUploadRequest -> IO ()
+upload taskInner _env rq = do
   let filename = T.unpack $         startUploadRequestMirrorPath rq
                           <> "/" <> startUploadRequestVaultName  rq
                           <> "/" <> startUploadRequestPath       rq
@@ -76,6 +71,8 @@ upload _env rq = do
               & imuPartSize           .~ Just (T.pack $ show partSize)
 
   print imu
+
+  void $ atomically $ taskSetStatus taskInner ("initiated upload" :: T.Text)
 
   let uploadId = "TODO"
 

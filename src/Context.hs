@@ -8,6 +8,7 @@ import           Data.Time
 import           Network.AWS
 import           System.Environment     (getEnv)
 import           System.FilePath        (FilePath, (</>))
+import Task
 
 data AwsConfig = AwsConfig
   { awsAccessKey :: !AccessKey
@@ -30,9 +31,10 @@ data VersionedEnv = VersionedEnv
   }
 
 data Context = Context
-  { awsConfigVar :: TVar AwsConfig
-  , awsEnvVar    :: TVar VersionedEnv
-  , configPath   :: FilePath
+  { awsConfigVar   :: TVar AwsConfig
+  , awsEnvVar      :: TVar VersionedEnv
+  , configPath     :: FilePath
+  , ctxTaskManager :: TaskManager
   }
 
 makeEmptyContext :: IO Context
@@ -40,6 +42,7 @@ makeEmptyContext = Context
     <$> newTVarIO emptyAwsConfig
     <*> newTVarIO (VersionedEnv 0 Nothing)
     <*> ((</> ".glacier-sync") <$> getEnv "HOME")
+    <*> newTaskManager
 
 credentialsFile :: Context -> FilePath
 credentialsFile = (</> "credentials.json") . configPath
