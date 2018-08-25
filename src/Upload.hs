@@ -3,6 +3,7 @@
 
 module Upload where
 
+import Data.Aeson
 import Control.Concurrent.STM
 import           Control.Concurrent                          (threadDelay)
 import           Control.Lens                                (runIdentity, (&),
@@ -29,6 +30,7 @@ import           Data.Time.ISO8601
 import           Foreign.C.Types
 import           Network.AWS                                 (Env)
 import           Network.AWS.Data.Body
+import           Network.AWS.Glacier.AbortMultipartUpload
 import           Network.AWS.Glacier.CompleteMultipartUpload
 import           Network.AWS.Glacier.InitiateMultipartUpload
 import           Network.AWS.Glacier.UploadMultipartPart
@@ -38,8 +40,6 @@ import           API.Types
 import           Context
 import           Treehash
 import Task
-
--- TODO introduce "task" concept allowing for progress reporting, cancellation
 
 partSize :: Int
 partSize = 16 * 1024 * 1024
@@ -58,6 +58,8 @@ upload taskInner _env rq = do
                           <> "/" <> startUploadRequestVaultName  rq
                           <> "/" <> startUploadRequestPath       rq
 
+  void $ atomically $ taskSetStatus taskInner ("getting file details" :: T.Text)
+
   fileStatus <- getFileStatus filename
   let CTime mt = modificationTime fileStatus
       imu = initiateMultipartUpload "-" (startUploadRequestVaultName rq)
@@ -70,6 +72,8 @@ upload taskInner _env rq = do
                           <> "Z</lm></m>")
               & imuPartSize           .~ Just (T.pack $ show partSize)
 
+  void $ atomically $ taskSetStatus taskInner ("initiating upload" :: T.Text)
+
   print imu
 
   void $ atomically $ taskSetStatus taskInner ("initiated upload" :: T.Text)
@@ -80,23 +84,46 @@ upload taskInner _env rq = do
 
   (totalSize, finalChecksum) <- runResourceT $ runConduit $ sourceFile filename
     .| splitIntoParts
-    .| uploadPart (startUploadRequestVaultName rq) uploadId rateLimiter
+    .| enumerateItems
+    .| uploadPart (startUploadRequestVaultName rq) uploadId rateLimiter taskInner
     .| fuseBoth sumSizes combineBlocks
   print (totalSize, finalChecksum)
 
-  do
-    (rereadSize, rereadChecksum) <- runResourceT $ runConduit $ sourceFile filename
-      .| DCL.map (\bs -> (B.length bs, bs))
-      .| fuseBoth sumSizes treehash
-    print (rereadSize, rereadChecksum)
+  statusAfterUpload <- atomically $ taskSetStatus taskInner ("uploaded parts" :: T.Text)
 
-  let cmu = completeMultipartUpload "-" (startUploadRequestVaultName rq) uploadId
-              & cmuChecksum    .~ Just (T.pack $ show finalChecksum)
-              & cmuArchiveSize .~ Just (T.pack $ show totalSize)
+  let abortUpload = do
+        void $ atomically $ taskSetStatus taskInner ("aborting upload" :: T.Text)
+        let amu = abortMultipartUpload "-" (startUploadRequestVaultName rq) uploadId
+        print amu
+        void $ atomically $ taskSetStatus taskInner ("aborted upload" :: T.Text)
 
-  print cmu
+  case statusAfterUpload of
+    Nothing -> do
+      (rereadSize, rereadChecksum) <- runResourceT $ runConduit $ sourceFile filename
+          .| DCL.map (\bs -> (B.length bs, bs))
+          .| fuseBoth sumSizes treehash
+      print (rereadSize, rereadChecksum)
 
-  return ()
+      if (rereadSize, rereadChecksum) /= (totalSize, finalChecksum)
+        then abortUpload
+        else do
+
+          void $ atomically $ taskSetStatus taskInner ("completing upload" :: T.Text)
+
+          let cmu = completeMultipartUpload "-" (startUploadRequestVaultName rq) uploadId
+                      & cmuChecksum    .~ Just (T.pack $ show finalChecksum)
+                      & cmuArchiveSize .~ Just (T.pack $ show totalSize)
+
+          print cmu
+
+          void $ atomically $ taskSetStatus taskInner ("completed upload" :: T.Text)
+
+    Just TaskCancelled -> abortUpload
+
+enumerateItems :: Monad m => ConduitM a (Integer, a) m ()
+enumerateItems = go 0
+  where
+  go i = awaitForever $ \x -> yield (i,x) >> (go $! i+1)
 
 splitIntoParts :: Monad m => ConduitM B.ByteString (Integer, [B.ByteString]) m ()
 splitIntoParts = go 0 0 []
@@ -121,19 +148,51 @@ ensureSmallerThan maxSize = awaitForever $ \chunk ->
     unless (B.null firstChunk) $ yield firstChunk
     unless (B.null overflow) $ leftover overflow
 
-uploadPart :: MonadIO m => T.Text -> T.Text -> RateLimiter -> ConduitM (Integer, [B.ByteString]) (Int, Digest SHA256) m ()
-uploadPart vn uid rateLimiter = awaitForever $ \(partStartPosition, partChunks) -> let
+uploadPart :: MonadIO m => T.Text -> T.Text -> RateLimiter -> TaskInner -> ConduitM (Integer, (Integer, [B.ByteString])) (Int, Digest SHA256) m ()
+uploadPart vn uid rateLimiter taskInner = awaitForever $ \(partNumber, (partStartPosition, partChunks)) -> let
   len = sum (map B.length partChunks)
   trh = runIdentity $ runConduit $ DCL.sourceList partChunks .| treehash
   hsh = runIdentity $ runConduit $ DCL.sourceList partChunks .| normalHash
-  yieldsChunks = DCL.sourceList partChunks .| rateLimitedConduit rateLimiter
+  yieldsChunks = DCL.sourceList partChunks .| rateLimitedConduit rateLimiter .| statusReportingConduit taskInner partNumber
   ump = uploadMultipartPart "-" vn uid (HashedStream hsh (fromIntegral len) yieldsChunks)
     & umpChecksum .~ Just (T.pack $ show trh)
     & umpRange    .~ Just (T.pack $ "bytes " ++ show partStartPosition ++ "-" ++ show (partStartPosition + fromIntegral len) ++ "/*")
   in do
-    liftIO $ print ump
-    liftIO $ runResourceT $ runConduit $ yieldsChunks .| showProgress
-    yield (len, trh)
+    taskStatus <- liftIO $ atomically $ taskSetStatus taskInner $ object
+      [ "activity" .= String "uploading"
+      , "part"     .= partNumber
+      ]
+    case taskStatus of
+      Nothing -> do
+        liftIO $ print ump
+        liftIO $ runResourceT $ runConduit $ yieldsChunks .| showProgress
+        yield (len, trh)
+
+      Just TaskCancelled -> return ()
+
+statusReportingConduit :: MonadIO m => TaskInner -> Integer -> ConduitM B.ByteString B.ByteString m ()
+statusReportingConduit taskInner partNumber = go 0
+  where
+    go c = do
+      next <- await
+      case next of
+        Nothing -> void $ liftIO $ atomically $ taskSetStatus taskInner $ object
+          [ "activity" .= String "uploaded part"
+          , "part"     .= partNumber
+          ]
+        Just bs -> do
+          let c' = c + B.length bs
+          taskStatus <- liftIO $ atomically $ taskSetStatus taskInner $ object
+            [ "activity" .= String "uploading"
+            , "part"     .= partNumber
+            , "bytes"    .= c'
+            ]
+          case taskStatus of
+            Nothing -> do
+              yield bs
+              go $! c'
+
+            Just TaskCancelled -> return ()
 
 showProgress :: MonadIO m => ConduitM B.ByteString Void m ()
 showProgress = go =<< liftIO getCurrentTime
