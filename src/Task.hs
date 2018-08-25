@@ -8,15 +8,20 @@ import Data.Aeson
 import qualified Data.HashMap.Strict as HM
 import Control.Concurrent.STM
 import Control.Concurrent
-import Control.Monad
 import Control.Exception
+import GHC.Conc (labelThread)
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TL
+import Data.Time
 
 data Task = Task
-  { taskId           :: Integer
-  , taskDescription  :: Value
-  -- TODO add start time
-  , taskCancel       :: STM ()
-  , taskGetStatus    :: STM Value
+  { taskId              :: Integer
+  , taskDescription     :: Value
+  , taskStartTime       :: UTCTime
+  , taskCancel          :: STM ()
+  , taskAwaitCompletion :: STM ()
+  , taskGetStatus       :: STM Value
+  , taskGetCancelled    :: STM Bool
   }
 
 instance ToJSON Task where
@@ -25,20 +30,23 @@ instance ToJSON Task where
 data TaskStatus = TaskStatus
   { taskStatusId          :: Integer
   , taskStatusDescription :: Value
+  , taskStatusStartTime   :: UTCTime
   , taskStatusStatus      :: Value
+  , taskStatusCancelled   :: Bool
   }
 
 instance ToJSON TaskStatus where
   toJSON TaskStatus{..} = object [ "id"          .= taskStatusId
                                  , "description" .= taskStatusDescription
                                  , "status"      .= taskStatusStatus
+                                 , "start_time"  .= taskStatusStartTime
+                                 , "cancelled"   .= taskStatusCancelled
                                  ]
 
 data TaskCancelled = TaskCancelled deriving (Show, Eq)
 
 data TaskInner = TaskInner
   { taskSetStatus      :: forall a. ToJSON a => a -> STM (Maybe TaskCancelled)
-  , taskAwaitCancelled :: STM ()
   }
 
 data TaskManager = TaskManager
@@ -66,7 +74,7 @@ getTaskStatus TaskManager{..} taskId' = do
   maybeTask <- HM.lookup taskId' <$> readTVar taskManagerTasks
   case maybeTask of
     Nothing -> return Nothing
-    Just Task{..} -> Just . TaskStatus taskId taskDescription <$> taskGetStatus
+    Just Task{..} -> Just <$> (TaskStatus taskId taskDescription taskStartTime <$> taskGetStatus <*> taskGetCancelled)
 
 cancelTask :: TaskManager -> Integer -> IO Bool
 cancelTask TaskManager{..} taskId' = do
@@ -75,36 +83,39 @@ cancelTask TaskManager{..} taskId' = do
     Nothing -> return False
     Just Task{..} -> do
       atomically taskCancel
-      -- TODO await completion
-      -- TODO shouldn't remove task from list until completed
+      atomically taskAwaitCompletion
       return True
 
 forkTask :: (ToJSON description, ToJSON status)
   => TaskManager -> description -> status -> (TaskInner -> IO ()) -> IO Task
 forkTask taskManager description initialStatus go = mask $ \restore -> do
-  (task, taskStatusVar, taskCancelledVar, cleanupTask) <- atomically $ do
+  taskStartTime <- getCurrentTime
+  (task, taskStatusVar, taskCancelledVar, finishTask) <- atomically $ do
     taskStatusVar    <- newTVar $ toJSON initialStatus
     taskCancelledVar <- newTVar False
+    taskFinishedVar  <- newTVar False
     taskId           <- newTaskId taskManager
 
-    let cleanupTask message = do
-          writeTVar taskCancelledVar True
-          writeTVar taskStatusVar $ object [ "status" .= String "finished"
+    let finishTask message = do
+          writeTVar taskFinishedVar True
+          writeTVar taskStatusVar $ object [ "status"  .= String "finished"
                                            , "message" .= String message
                                            ]
           removeTask taskManager task
 
-        taskDescription = toJSON description
-        taskCancel      = cleanupTask "cancelled"
-        taskGetStatus   = readTVar taskStatusVar
+        taskDescription     = toJSON description
+        taskCancel          = writeTVar taskCancelledVar True
+        taskAwaitCompletion = check =<< readTVar taskFinishedVar
+        taskGetStatus       = readTVar taskStatusVar
+        taskGetCancelled    = readTVar taskCancelledVar
 
         task = Task{..}
 
     addTask taskManager task
 
-    return (task, taskStatusVar, taskCancelledVar, atomically . cleanupTask)
-    -- TODO label forked thread
-  void $ forkIO (restore (go TaskInner
+    return (task, taskStatusVar, taskCancelledVar, atomically . finishTask)
+
+  tid <- forkIO (restore (go TaskInner
       { taskSetStatus      = \v -> do
           taskCancelled <- readTVar taskCancelledVar
           if taskCancelled
@@ -112,8 +123,12 @@ forkTask taskManager description initialStatus go = mask $ \restore -> do
             else do
               writeTVar taskStatusVar $ toJSON v
               return Nothing
+      }) `finally` finishTask "finished") `onException` finishTask "failed to start"
 
-      , taskAwaitCancelled = check =<< readTVar taskCancelledVar
-      }) `finally` cleanupTask "finished") `onException` cleanupTask "failed to start"
+  labelThread tid $ TL.unpack $ TL.decodeUtf8 $ encode $ toJSON description
 
   return task
+
+
+
+
