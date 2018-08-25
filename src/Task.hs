@@ -13,6 +13,7 @@ import GHC.Conc (labelThread)
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import Data.Time
+import Control.Monad
 
 data Task = Task
   { taskId              :: Integer
@@ -77,12 +78,13 @@ getTaskStatus TaskManager{..} taskId' = do
     Just Task{..} -> Just <$> (TaskStatus taskId taskDescription taskStartTime <$> taskGetStatus <*> taskGetCancelled)
 
 cancelTask :: TaskManager -> Integer -> IO Bool
-cancelTask TaskManager{..} taskId' = do
-  maybeTask <- atomically $ HM.lookup taskId' <$> readTVar taskManagerTasks
-  case maybeTask of
-    Nothing -> return False
-    Just Task{..} -> do
-      atomically taskCancel
+cancelTask TaskManager{..} taskId'
+    = join $ atomically $ maybe notFound cancelAndAwait =<< HM.lookup taskId' <$> readTVar taskManagerTasks
+  where
+  notFound = return $ return False
+  cancelAndAwait Task{..} = do
+    taskCancel
+    return $ do
       atomically taskAwaitCompletion
       return True
 
@@ -132,7 +134,3 @@ forkTask taskManager description initialStatus go = mask $ \restore -> do
   labelThread tid $ TL.unpack $ TL.decodeUtf8 $ encode $ toJSON description
 
   return task
-
-
-
-
