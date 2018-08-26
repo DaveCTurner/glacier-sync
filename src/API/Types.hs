@@ -61,21 +61,18 @@ instance ToJSON AwsGetStatusResponse where
     ]
 
 data StartUploadRequest = StartUploadRequest
-  { startUploadRequestMirrorPath :: T.Text -- TODO this should be in config
-  , startUploadRequestVaultName  :: T.Text
-  , startUploadRequestPath       :: T.Text
+  { startUploadRequestVaultName :: T.Text
+  , startUploadRequestPath      :: T.Text
   } deriving (Show, Eq)
 
 instance FromJSON StartUploadRequest where
   parseJSON = withObject "StartUploadRequest" $ \v ->
     StartUploadRequest
-      <$> v .: "mirror_path"
-      <*> v .: "vault_name"
+      <$> v .: "vault_name"
       <*> v .: "path"
 
 instance ToJSON StartUploadRequest where
   toJSON StartUploadRequest{..} = object
-    [ "mirror_path" .= startUploadRequestMirrorPath
-    , "vault_name"  .= startUploadRequestVaultName
+    [ "vault_name"  .= startUploadRequestVaultName
     , "path"        .= startUploadRequestPath
     ]

@@ -1,9 +1,11 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module Upload where
 
-import           Control.Concurrent                          (threadDelay)
+import           Control.Concurrent                          (readMVar,
+                                                              threadDelay)
 import           Control.Concurrent.STM
 import           Control.Lens                                (runIdentity, (&),
                                                               (.~))
@@ -28,7 +30,6 @@ import qualified Data.Text.Encoding                          as T
 import           Data.Time
 import           Data.Time.ISO8601
 import           Foreign.C.Types
-import           Network.AWS                                 (Env)
 import           Network.AWS.Data.Body
 import           Network.AWS.Glacier.AbortMultipartUpload
 import           Network.AWS.Glacier.CompleteMultipartUpload
@@ -37,6 +38,7 @@ import           Network.AWS.Glacier.UploadMultipartPart
 import           System.Posix.Files
 
 import           API.Types
+import           Config
 import           Context
 import           Task
 import           Treehash
@@ -47,16 +49,15 @@ partSize = 16 * 1024 * 1024
 burstSize :: Int
 burstSize = 50000
 
-uploadBackground :: Context -> StartUploadRequest -> TaskInner -> IO ()
-uploadBackground context rq taskInner = withUploaderSlot context taskInner $ do
-  let awsEnv = undefined context
-  upload taskInner awsEnv rq
+relativePath :: StartUploadRequest -> FilePath
+relativePath StartUploadRequest{..} = T.unpack $ startUploadRequestVaultName <> "/" <> startUploadRequestPath
 
-upload :: TaskInner -> Env -> StartUploadRequest -> IO ()
-upload taskInner _env rq = do
-  let filename = T.unpack $         startUploadRequestMirrorPath rq
-                          <> "/" <> startUploadRequestVaultName  rq
-                          <> "/" <> startUploadRequestPath       rq
+upload :: Context -> StartUploadRequest -> TaskInner -> IO ()
+upload context rq taskInner = withUploaderSlot context taskInner $ do
+
+  config <- readMVar (ctxConfigVar context)
+
+  let filename = cfgMirrorPath config <> "/" <> relativePath rq
 
   void $ atomically $ taskSetStatus taskInner ("getting file details" :: T.Text)
 

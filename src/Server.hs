@@ -26,7 +26,7 @@ import           Context
 import           ServantUtils
 import           StoredCredentials
 import           Task
-import           Upload                     (uploadBackground)
+import           Upload                     (upload)
 
 application :: Context -> Application
 application context = serve (Proxy :: Proxy API) serveAPI where
@@ -124,7 +124,7 @@ application context = serve (Proxy :: Proxy API) serveAPI where
 
   serveUploadAPI :: Server UploadAPI
   serveUploadAPI startUploadRequest =
-    liftIO $ forkTask (ctxTaskManager context) startUploadRequest ("starting" :: String) $ uploadBackground context startUploadRequest
+    liftIO $ forkTask (ctxTaskManager context) startUploadRequest ("starting" :: String) $ upload context startUploadRequest
 
   serveTasksAPI :: Server TasksAPI
   serveTasksAPI = serveTasksList :<|> serveTaskAPI
