@@ -8,9 +8,10 @@ import           Task
 
 import           Servant.API
 
-type API =    "security" :> SecurityAPI
-         :<|> "upload"   :> UploadAPI
-         :<|> "tasks"    :> TasksAPI
+type API =    "security"        :> SecurityAPI
+         :<|> "upload"          :> UploadAPI
+         :<|> "tasks"           :> TasksAPI
+         :<|> "local_inventory" :> LocalInventoryAPI
 
 type SecurityAPI = "aws" :> SecurityAwsAPI
 
@@ -33,3 +34,6 @@ type TasksAPI = Get '[JSON] [Task]
 
 type TaskAPI = Get '[JSON] TaskStatus
           :<|> Delete '[PlainText] NoContent
+
+type LocalInventoryAPI = "refresh" :> PostAccepted '[JSON] Task
+                    :<|> "rebuild" :> PostAccepted '[JSON] Task

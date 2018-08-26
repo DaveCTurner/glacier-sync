@@ -28,7 +28,7 @@ application :: Context -> Application
 application context = serve (Proxy :: Proxy API) serveAPI where
 
   serveAPI :: Server API
-  serveAPI = serveSecurityAPI :<|> serveUploadAPI :<|> serveTasksAPI
+  serveAPI = serveSecurityAPI :<|> serveUploadAPI :<|> serveTasksAPI :<|> serveLocalInventoryAPI
 
   serveSecurityAPI :: Server SecurityAPI
   serveSecurityAPI = serveSecurityAwsAPI
@@ -139,3 +139,15 @@ application context = serve (Proxy :: Proxy API) serveAPI where
     serveDeleteTask = do
       success <- liftIO $ cancelTask (ctxTaskManager context) taskId
       if success then return NoContent else taskNotFound
+
+  serveLocalInventoryAPI :: Server LocalInventoryAPI
+  serveLocalInventoryAPI = serveRefreshLocalInventory :<|> serveRebuildLocalInventory
+
+  serveRefreshLocalInventory :: Handler Task
+  serveRefreshLocalInventory = undefined
+
+  serveRebuildLocalInventory :: Handler Task
+  serveRebuildLocalInventory = undefined
+
+
+
