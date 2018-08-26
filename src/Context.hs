@@ -2,16 +2,18 @@
 
 module Context where
 
+import           Control.Concurrent.MVar
 import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
-import qualified Data.Text              as T
+import qualified Data.Text               as T
 import           Data.Time
 import           Network.AWS
-import           System.Environment     (getEnv)
-import           System.FilePath        (FilePath, (</>))
+import           System.Environment      (getEnv)
+import           System.FilePath         (FilePath, (</>))
 
 import           API.Types
+import           Config
 import           Task
 
 data AwsConfig = AwsConfig
@@ -40,18 +42,27 @@ data Context = Context
   , configPath       :: FilePath
   , ctxTaskManager   :: TaskManager
   , ctxUploaderSlots :: TVar Int
+  , ctxConfigVar     :: MVar Config
   }
 
 makeEmptyContext :: IO Context
-makeEmptyContext = Context
+makeEmptyContext = do
+  configDir <- (</> ".glacier-sync") <$> getEnv "HOME"
+  config    <- loadConfig $ configDir </> "config.json"
+
+  Context
     <$> newTVarIO emptyAwsConfig
     <*> newTVarIO (VersionedEnv 0 Nothing)
-    <*> ((</> ".glacier-sync") <$> getEnv "HOME")
+    <*> pure configDir
     <*> newTaskManager
     <*> newTVarIO 1
+    <*> newMVar config
 
 credentialsFile :: Context -> FilePath
 credentialsFile = (</> "credentials.json") . configPath
+
+configFile :: Context -> FilePath
+configFile = (</> "config.json") . configPath
 
 getAwsEnv :: Context -> IO Env
 getAwsEnv context = atomically $ maybe retry (return . fst) <$> veEnv =<< readTVar (awsEnvVar context)

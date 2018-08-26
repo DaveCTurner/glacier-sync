@@ -4,8 +4,6 @@
 
 module StoredCredentials where
 
-import           API.Types
-import           Context
 import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Exception
@@ -22,8 +20,11 @@ import           Network.AWS.Glacier.ListVaults
 import           Network.HTTP.Client
 import           Network.HTTP.Client.TLS
 import           Servant                        hiding (Context)
-import           ServantUtils
 import           System.IO                      (IOMode (WriteMode), withFile)
+
+import           API.Types
+import           Context
+import           ServantUtils
 
 data StoredSessionCredentials = StoredSessionCredentials
   { storedSessionCredentialsAccessKey :: AccessKey

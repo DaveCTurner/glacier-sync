@@ -15,9 +15,17 @@ throwErrorShow :: (Show e, MonadError ServantErr m) => e -> m a
 throwErrorShow = throwErrorString . show
 
 throwErrorString :: MonadError ServantErr m => String -> m a
-throwErrorString message = throwError $ ServantErr
+throwErrorString message = throwError ServantErr
   { errHTTPCode = 500
   , errReasonPhrase = "Internal error"
+  , errBody = BL.fromStrict $ T.encodeUtf8 $ T.pack message
+  , errHeaders = [(hContentType, "text/plain; encoding=utf-8")]
+  }
+
+badRequestString :: MonadError ServantErr m => String -> m a
+badRequestString message = throwError ServantErr
+  { errHTTPCode = 400
+  , errReasonPhrase = "Bad request"
   , errBody = BL.fromStrict $ T.encodeUtf8 $ T.pack message
   , errHeaders = [(hContentType, "text/plain; encoding=utf-8")]
   }
