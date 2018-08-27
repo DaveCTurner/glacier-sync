@@ -9,6 +9,7 @@ import           Servant.API
 import           API.Types
 import           Config
 import           Task
+import LocalInventory
 
 type API =    "security"        :> SecurityAPI
          :<|> "upload"          :> UploadAPI
@@ -38,7 +39,8 @@ type TasksAPI = Get '[JSON] [Task]
 type TaskAPI = Get '[JSON] TaskStatus
           :<|> Delete '[PlainText] NoContent
 
-type LocalInventoryAPI = "refresh" :> PostAccepted '[JSON] Task
+type LocalInventoryAPI = Get '[JSON] LocalInventory
+                    :<|> "refresh" :> PostAccepted '[JSON] Task
                     :<|> "rebuild" :> PostAccepted '[JSON] Task
 
 type ConfigAPI = ReqBody '[JSON] Value :> PostAccepted '[JSON] Config

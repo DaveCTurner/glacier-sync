@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Context where
 
@@ -15,6 +16,8 @@ import           System.FilePath         (FilePath, (</>))
 import           API.Types
 import           Config
 import           Task
+import CliConfig (CliConfig(..))
+import Database
 
 data AwsConfig = AwsConfig
   { awsAccessKey :: !AccessKey
@@ -45,18 +48,22 @@ data Context = Context
   , ctxConfigVar     :: MVar Config
   }
 
-makeEmptyContext :: IO Context
-makeEmptyContext = do
+makeEmptyContext :: CliConfig -> IO Context
+makeEmptyContext CliConfig{..} = do
   configDir <- (</> ".glacier-sync") <$> getEnv "HOME"
   config    <- loadConfig $ configDir </> "config.json"
+
+  ensureDatabase dbPath
 
   Context
     <$> newTVarIO emptyAwsConfig
     <*> newTVarIO (VersionedEnv 0 Nothing)
     <*> pure configDir
-    <*> newTaskManager
+    <*> newTaskManager dbPath
     <*> newTVarIO 1
     <*> newMVar config
+
+  where dbPath = cliConfigDataPath </> "glacier-sync.db"
 
 credentialsFile :: Context -> FilePath
 credentialsFile = (</> "credentials.json") . configPath

@@ -7,10 +7,11 @@ import           Network.Wai.Handler.Warp
 import           Server
 import           StoredCredentials
 import           Treehashes
+import CliConfig
 
 main :: IO ()
 main = do
-  context <- makeEmptyContext
+  context <- makeEmptyContext =<< parseCliConfig
   loadStoredCredentialsIfAvailable context
   treeHashesCollections <- loadTreehashes context
   print $ map (length . treehashesCollectionEntries) treeHashesCollections

@@ -25,6 +25,7 @@ import           Config
 import           Context
 import           ServantUtils
 import           StoredCredentials
+import           LocalInventory
 import           Task
 import           Upload                     (upload)
 
@@ -159,7 +160,10 @@ application context = serve (Proxy :: Proxy API) serveAPI where
   serveGetConfig = liftIO $ readMVar $ ctxConfigVar context
 
   serveLocalInventoryAPI :: Server LocalInventoryAPI
-  serveLocalInventoryAPI = serveRefreshLocalInventory :<|> serveRebuildLocalInventory
+  serveLocalInventoryAPI = serveGetLocalInventory :<|> serveRefreshLocalInventory :<|> serveRebuildLocalInventory
+
+  serveGetLocalInventory :: Handler LocalInventory
+  serveGetLocalInventory = undefined
 
   serveRefreshLocalInventory :: Handler Task
   serveRefreshLocalInventory = undefined

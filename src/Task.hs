@@ -14,6 +14,7 @@ import qualified Data.Text.Lazy          as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import           Data.Time
 import           GHC.Conc                (labelThread)
+import Database.SQLite.Simple
 
 data Task = Task
   { taskId              :: Integer
@@ -47,16 +48,18 @@ instance ToJSON TaskStatus where
 data TaskCancelled = TaskCancelled deriving (Show, Eq)
 
 data TaskInner = TaskInner
-  { taskSetStatus      :: forall a. ToJSON a => a -> STM (Maybe TaskCancelled)
+  { taskSetStatus          :: forall a. ToJSON a => a -> STM (Maybe TaskCancelled)
+  , taskDatabaseConnection :: Connection
   }
 
 data TaskManager = TaskManager
-  { taskManagerNextId :: TVar Integer
-  , taskManagerTasks  :: TVar (HM.HashMap Integer Task)
+  { taskManagerNextId       :: TVar Integer
+  , taskManagerTasks        :: TVar (HM.HashMap Integer Task)
+  , taskManagerDatabasePath :: FilePath
   }
 
-newTaskManager :: IO TaskManager
-newTaskManager = TaskManager <$> newTVarIO 0 <*> newTVarIO HM.empty
+newTaskManager :: FilePath -> IO TaskManager
+newTaskManager databasePath = TaskManager <$> newTVarIO 0 <*> newTVarIO HM.empty <*> pure databasePath
 
 newTaskId :: TaskManager -> STM Integer
 newTaskId TaskManager{..} = readTVar taskManagerNextId <* modifyTVar' taskManagerNextId (+1)
@@ -88,6 +91,9 @@ cancelTask TaskManager{..} taskId'
       atomically taskAwaitCompletion
       return True
 
+withDatabaseConnection :: TaskManager -> (Connection -> IO a) -> IO a
+withDatabaseConnection TaskManager{..} = withConnection taskManagerDatabasePath
+
 forkTask :: (ToJSON description, ToJSON status)
   => TaskManager -> description -> status -> (TaskInner -> IO ()) -> IO Task
 forkTask taskManager description initialStatus go = mask $ \restore -> do
@@ -113,7 +119,7 @@ forkTask taskManager description initialStatus go = mask $ \restore -> do
 
         task = Task{..}
 
-        taskAction = restore $ go TaskInner
+        taskAction = restore $ withDatabaseConnection taskManager $ \conn -> go TaskInner
           { taskSetStatus      = \v -> do
               taskCancelled <- readTVar taskCancelledVar
               if taskCancelled
@@ -121,6 +127,7 @@ forkTask taskManager description initialStatus go = mask $ \restore -> do
                 else do
                   writeTVar taskStatusVar $ toJSON v
                   return Nothing
+          , taskDatabaseConnection = conn
           }
 
     addTask taskManager task

@@ -24,6 +24,7 @@ dependencies:
 - conduit-extra
 - cryptonite
 - deepseq
+- directory
 - either
 - filepath
 - http-client
@@ -32,9 +33,11 @@ dependencies:
 - iso8601-time
 - lens
 - mtl
+- optparse-applicative
 - resourcet
 - servant
 - servant-server
+- sqlite-simple
 - stm
 - text
 - time
