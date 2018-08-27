@@ -4,8 +4,7 @@
 
 module Upload where
 
-import           Control.Concurrent                          (readMVar,
-                                                              threadDelay)
+import           Control.Concurrent                          (threadDelay)
 import           Control.Concurrent.STM
 import           Control.Lens                                (runIdentity, (&),
                                                               (.~))
@@ -23,6 +22,7 @@ import qualified Data.ByteString.Base64                      as B64
 import           Data.Conduit
 import           Data.Conduit.Binary
 import qualified Data.Conduit.List                           as DCL
+import System.FilePath
 import           Data.IORef
 import           Data.Monoid
 import qualified Data.Text                                   as T
@@ -38,7 +38,7 @@ import           Network.AWS.Glacier.UploadMultipartPart
 import           System.Posix.Files
 
 import           API.Types
-import           Config
+import CliConfig
 import           Context
 import           Task
 import           Treehash
@@ -55,9 +55,7 @@ relativePath StartUploadRequest{..} = T.unpack $ startUploadRequestVaultName <> 
 upload :: Context -> StartUploadRequest -> TaskInner -> IO ()
 upload context rq taskInner = withUploaderSlot context taskInner $ do
 
-  config <- readMVar (ctxConfigVar context)
-
-  let filename = cfgMirrorPath config <> "/" <> relativePath rq
+  let filename = cliConfigDataPath (ctxCliConfig context) </> relativePath rq
 
   void $ atomically $ taskSetStatus taskInner ("getting file details" :: T.Text)
 

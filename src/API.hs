@@ -3,11 +3,9 @@
 
 module API where
 
-import           Data.Aeson
 import           Servant.API
 
 import           API.Types
-import           Config
 import           Task
 import LocalInventory
 
@@ -15,7 +13,6 @@ type API =    "security"        :> SecurityAPI
          :<|> "upload"          :> UploadAPI
          :<|> "tasks"           :> TasksAPI
          :<|> "local_inventory" :> LocalInventoryAPI
-         :<|> "config"          :> ConfigAPI
 
 type SecurityAPI = "aws" :> SecurityAwsAPI
 
@@ -42,6 +39,3 @@ type TaskAPI = Get '[JSON] TaskStatus
 type LocalInventoryAPI = Get '[JSON] LocalInventory
                     :<|> "refresh" :> PostAccepted '[JSON] Task
                     :<|> "rebuild" :> PostAccepted '[JSON] Task
-
-type ConfigAPI = ReqBody '[JSON] Value :> PostAccepted '[JSON] Config
-            :<|>                          Get          '[JSON] Config

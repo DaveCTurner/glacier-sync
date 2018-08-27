@@ -4,11 +4,9 @@
 
 module Server where
 
-import           Control.Concurrent.MVar
 import           Control.Concurrent.STM
 import           Control.Lens               hiding (Context, (.=))
 import           Control.Monad.Except
-import           Data.Aeson
 import           Data.Proxy
 import           Data.Time
 import           Network.AWS
@@ -21,7 +19,6 @@ import           Servant                    hiding (Context)
 
 import           API
 import           API.Types
-import           Config
 import           Context
 import           ServantUtils
 import           StoredCredentials
@@ -34,7 +31,6 @@ application context = serve (Proxy :: Proxy API) serveAPI where
 
   serveAPI :: Server API
   serveAPI = serveSecurityAPI :<|> serveUploadAPI :<|> serveTasksAPI :<|> serveLocalInventoryAPI
-          :<|> serveConfigAPI
 
   serveSecurityAPI :: Server SecurityAPI
   serveSecurityAPI = serveSecurityAwsAPI
@@ -145,19 +141,6 @@ application context = serve (Proxy :: Proxy API) serveAPI where
     serveDeleteTask = do
       success <- liftIO $ cancelTask (ctxTaskManager context) taskId
       if success then return NoContent else taskNotFound
-
-  serveConfigAPI :: Server ConfigAPI
-  serveConfigAPI = serveUpdateConfig :<|> serveGetConfig
-
-  serveUpdateConfig :: Value -> Handler Config
-  serveUpdateConfig v = join $ liftIO $ modifyMVar (ctxConfigVar context) $ \cfg -> case updateConfig cfg v of
-      Left message -> return (cfg, badRequestString message)
-      Right cfg'   -> do
-        saveConfig (configFile context) cfg'
-        return (cfg', return cfg')
-
-  serveGetConfig :: Handler Config
-  serveGetConfig = liftIO $ readMVar $ ctxConfigVar context
 
   serveLocalInventoryAPI :: Server LocalInventoryAPI
   serveLocalInventoryAPI = serveGetLocalInventory :<|> serveRefreshLocalInventory :<|> serveRebuildLocalInventory
