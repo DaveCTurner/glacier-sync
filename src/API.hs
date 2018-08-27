@@ -6,8 +6,8 @@ module API where
 import           Servant.API
 
 import           API.Types
+import           LocalInventory
 import           Task
-import LocalInventory
 
 type API =    "security"        :> SecurityAPI
          :<|> "upload"          :> UploadAPI

@@ -13,8 +13,8 @@ import qualified Data.HashMap.Strict     as HM
 import qualified Data.Text.Lazy          as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import           Data.Time
+import           Database.SQLite.Simple
 import           GHC.Conc                (labelThread)
-import Database.SQLite.Simple
 
 data Task = Task
   { taskId              :: Integer

@@ -2,10 +2,10 @@
 
 module Database where
 
-import Database.SQLite.Simple
-import Control.Exception
-import Control.Monad
-import System.Directory
+import           Control.Exception
+import           Control.Monad
+import           Database.SQLite.Simple
+import           System.Directory
 
 data SchemaVersion
   = SchemaVersion0
@@ -40,7 +40,7 @@ ensureDatabase databasePath = do
           let schemaVersions = [sv | vi <- versionInts, Just sv <- [schemaVersionFromInt vi]]
           case (onlyVersionInts, schemaVersions) of
             ([_], [sv]) -> return sv
-            _ -> throwIO $ BadVersionException versionInts
+            _           -> throwIO $ BadVersionException versionInts
 
         upgradeTo target = do
           current <- getVersion

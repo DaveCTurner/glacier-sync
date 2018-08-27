@@ -22,7 +22,6 @@ import qualified Data.ByteString.Base64                      as B64
 import           Data.Conduit
 import           Data.Conduit.Binary
 import qualified Data.Conduit.List                           as DCL
-import System.FilePath
 import           Data.IORef
 import           Data.Monoid
 import qualified Data.Text                                   as T
@@ -35,10 +34,11 @@ import           Network.AWS.Glacier.AbortMultipartUpload
 import           Network.AWS.Glacier.CompleteMultipartUpload
 import           Network.AWS.Glacier.InitiateMultipartUpload
 import           Network.AWS.Glacier.UploadMultipartPart
+import           System.FilePath
 import           System.Posix.Files
 
 import           API.Types
-import CliConfig
+import           CliConfig
 import           Context
 import           Task
 import           Treehash

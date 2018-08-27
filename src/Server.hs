@@ -4,7 +4,9 @@
 
 module Server where
 
+import           Control.Concurrent.MVar
 import           Control.Concurrent.STM
+import           Control.Exception          (mask, onException)
 import           Control.Lens               hiding (Context, (.=))
 import           Control.Monad.Except
 import           Data.Proxy
@@ -20,9 +22,9 @@ import           Servant                    hiding (Context)
 import           API
 import           API.Types
 import           Context
+import           LocalInventory
 import           ServantUtils
 import           StoredCredentials
-import           LocalInventory
 import           Task
 import           Upload                     (upload)
 
@@ -146,13 +148,19 @@ application context = serve (Proxy :: Proxy API) serveAPI where
   serveLocalInventoryAPI = serveGetLocalInventory :<|> serveRefreshLocalInventory :<|> serveRebuildLocalInventory
 
   serveGetLocalInventory :: Handler LocalInventory
-  serveGetLocalInventory = undefined
+  serveGetLocalInventory = do
+    resultVar <- liftIO newEmptyMVar
+    void $ liftIO $ mask $ \restore ->
+      forkTask (ctxTaskManager context) ("get-inventory" :: String) ("starting" :: String) $ \taskInner -> do
+        restore (getLocalInventory taskInner $ putMVar resultVar . Just) `onException` putMVar resultVar Nothing
+    maybe (throwErrorString "get-inventory failed") return =<< liftIO (readMVar resultVar)
 
   serveRefreshLocalInventory :: Handler Task
-  serveRefreshLocalInventory = undefined
+  serveRefreshLocalInventory
+    = liftIO $ forkTask (ctxTaskManager context) ("refresh-inventory" :: String) ("starting" :: String)
+                        (refreshLocalInventory context)
 
   serveRebuildLocalInventory :: Handler Task
-  serveRebuildLocalInventory = undefined
-
-
-
+  serveRebuildLocalInventory
+    = liftIO $ forkTask (ctxTaskManager context) ("rebuild-inventory" :: String) ("starting" :: String)
+                        (rebuildLocalInventory context)

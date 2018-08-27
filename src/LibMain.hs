@@ -1,5 +1,6 @@
 module LibMain where
 
+import           CliConfig
 import           Context
 import           Control.Concurrent.Async
 import           Lister
@@ -7,7 +8,6 @@ import           Network.Wai.Handler.Warp
 import           Server
 import           StoredCredentials
 import           Treehashes
-import CliConfig
 
 main :: IO ()
 main = do

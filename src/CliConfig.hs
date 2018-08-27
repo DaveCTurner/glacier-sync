@@ -1,7 +1,7 @@
 module CliConfig where
 
-import Data.Monoid
-import Options.Applicative
+import           Data.Monoid
+import           Options.Applicative
 
 data CliConfig = CliConfig
   { cliConfigDataPath :: FilePath
