@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TupleSections     #-}
 
 module LocalInventory where
 
@@ -95,11 +96,12 @@ data LocalInventory = LocalInventory [LocalInventoryItem]
 instance ToJSON LocalInventory where
   toJSON (LocalInventory items) = object ["items" .= items]
 
+readLocalInventoryItems :: TaskInner -> IO [LocalInventoryItem]
+readLocalInventoryItems taskInner = query_ (taskDatabaseConnection taskInner) "SELECT * FROM local_inventory ORDER BY vault, path"
+
 getLocalInventory :: TaskInner -> (LocalInventory -> IO ()) -> IO ()
 getLocalInventory taskInner consumeResult = withTransaction (taskDatabaseConnection taskInner) $ do
-  consumeResult . LocalInventory
-    =<< query_ (taskDatabaseConnection taskInner)
-          "SELECT * FROM local_inventory ORDER BY vault, path"
+  consumeResult . LocalInventory =<< readLocalInventoryItems taskInner
 
 refreshLocalInventory :: Context -> TaskInner -> IO ()
 refreshLocalInventory context taskInner
@@ -121,7 +123,7 @@ scanLocalInventory :: TaskInner -> Context -> IO ()
 scanLocalInventory taskInner context = do
   -- TODO also need to delete inventory entries for files that no longer exist on disk
 
-  currentEntries <- query_ (taskDatabaseConnection taskInner) "SELECT * FROM local_inventory"
+  currentEntries <- readLocalInventoryItems taskInner
   let currentEntriesByVaultAndPath = HM.fromList [((localInventoryItemVault i, localInventoryItemPath i), i) | i <- currentEntries]
 
       mirrorRoot = cliConfigDataPath (ctxCliConfig context) </> "mirror"
@@ -132,13 +134,16 @@ scanLocalInventory taskInner context = do
           , "path"   .= relPath
           , "action" .= String "processing entry"
           ]) >>= \case
-          Just TaskCancelled -> return ()
+          Just TaskCancelled -> return []
           Nothing -> do
             let absPath = mirrorRoot </> vaultName </> relPath
             isFile <- doesFileExist      absPath
             isDir  <- doesDirectoryExist absPath
-            when isFile $ onFile vaultName relPath
-            when isDir  $ mapM_ (onEntry vaultName . (relPath </>)) =<< listDirectory absPath
+            if isFile then do
+              onFile vaultName relPath
+              return [(T.pack vaultName, T.pack relPath)]
+              else if isDir then fmap concat $ mapM (onEntry vaultName . (relPath </>)) =<< listDirectory absPath
+              else return []
 
       onFile vaultName relPath = do
         let absPath = mirrorRoot </> vaultName </> relPath
@@ -151,8 +156,6 @@ scanLocalInventory taskInner context = do
               _ -> True
 
         when needsUpdate $ do
-
-          now <- getCurrentTime
 
           let reportHashProgressConduit !c = await >>= \case
                 Nothing -> return ()
@@ -167,7 +170,9 @@ scanLocalInventory taskInner context = do
                     ]) >>= \case
                       Just TaskCancelled -> return ()
                       Nothing            -> yield bs >> reportHashProgressConduit c'
+          putStrLn $ "calculating hash of " ++ vaultName </> relPath
           treeHashValue <- runResourceT $ runConduit $ sourceFile absPath .| reportHashProgressConduit 0 .| treehash
+          now <- getCurrentTime
 
           atomically (taskSetStatus taskInner $ object
             [ "vault"  .= vaultName
@@ -191,7 +196,10 @@ scanLocalInventory taskInner context = do
                   }
 
   vaultNames <- listDirectory mirrorRoot
-  forM_ vaultNames $ \vaultName -> mapM_ (onEntry vaultName) =<< listDirectory (mirrorRoot </> vaultName)
+  unprocessedEntries <- fmap (HM.keys . HM.difference currentEntriesByVaultAndPath . HM.fromList . map (,()) . concat . concat)
+                      $ forM vaultNames $ \vaultName -> mapM (onEntry vaultName)
+                      =<< listDirectory (mirrorRoot </> vaultName)
 
-
-
+  forM_ unprocessedEntries $ \(vaultName, relPath) ->
+    execute (taskDatabaseConnection taskInner)
+      "DELETE FROM local_inventory WHERE vault = ? AND path = ?" (vaultName, relPath)
